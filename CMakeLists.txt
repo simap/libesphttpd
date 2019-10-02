@@ -13,17 +13,19 @@ set (libesphttpd_SOURCES "core/auth.c"
                          "util/esp32_httpd_vfs.c"
                          "util/esp32_wifi.c")
 
+set (libesphttpd_PRIV_INCLUDE_DIRS "core"
+                                   "util")
+
 if (CONFIG_ESPHTTPD_USE_ESPFS)
     list (APPEND libesphttpd_SOURCES "core/httpd-espfs.c")
+    list (APPEND libesphttpd_PRIV_INCLUDE_DIRS "../espfs/include")
 endif (CONFIG_ESPHTTPD_USE_ESPFS)
 
 idf_component_register(
     SRCS "${libesphttpd_SOURCES}"
     INCLUDE_DIRS "include"
-    PRIV_INCLUDE_DIRS "core"
-                      "util"
+    PRIV_INCLUDE_DIRS "${libesphttpd_PRIV_INCLUDE_DIRS}"
     REQUIRES "app_update"
-             "espfs"
              "json"
              "spi_flash"
              "wpa_supplicant"
