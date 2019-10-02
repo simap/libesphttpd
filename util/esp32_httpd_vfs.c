@@ -48,7 +48,6 @@ CgiStatus ICACHE_FLASH_ATTR cgiEspVfsGet(HttpdConnData *connData) {
 	char buff[FILE_CHUNK_LEN];
 	char filename[MAX_FILENAME_LENGTH + 1];
 	char acceptEncodingBuffer[64];
-	int isGzip;
 	bool isIndex = false;
 	struct stat filestat;	
 
@@ -64,6 +63,8 @@ CgiStatus ICACHE_FLASH_ATTR cgiEspVfsGet(HttpdConnData *connData) {
 
 	//First call to this cgi.
 	if (file==NULL) {
+		int isGzip = 0;
+
 		if (connData->requestType!=HTTPD_METHOD_GET) {
 			return HTTPD_CGI_NOTFOUND;  //	return and allow another cgi function to handle it
 		}
@@ -83,12 +84,17 @@ CgiStatus ICACHE_FLASH_ATTR cgiEspVfsGet(HttpdConnData *connData) {
 		}
 
 		file = fopen(filename, "r");
-		if (file != NULL) ESP_LOGD(__func__, "fopen: %s, r", filename);
-		isGzip = 0;
+		if (file != NULL) {
+			struct stat st = {};
+			fstat(fileno(file), &st);
+			#define ESPFS_MAGIC 0x73665345
+			#define ESPFS_FLAG_GZIP (1<<1)
+			isGzip = (st.st_spare4[0] == ESPFS_MAGIC && st.st_spare4[1] & ESPFS_FLAG_GZIP);
+			ESP_LOGD(__func__, "fopen: %s, r", filename);
+		}
 		
 		if (file==NULL) {
 			// Check if requested file is available GZIP compressed ie. with file extension .gz
-		
 			strncat(filename, ".gz", MAX_FILENAME_LENGTH - strlen(filename));
 			ESP_LOGD(__func__, "GET: GZIPped file - %s", filename);
 			file = fopen(filename, "r");
@@ -97,8 +103,10 @@ CgiStatus ICACHE_FLASH_ATTR cgiEspVfsGet(HttpdConnData *connData) {
 			
 			if (file==NULL) {
 				return HTTPD_CGI_NOTFOUND;
-			}				
-		
+			}		
+		}
+
+		if (isGzip) {
 			// Check the browser's "Accept-Encoding" header. If the client does not
 			// advertise that he accepts GZIP send a warning message (telnet users for e.g.)
 			httpdGetHeader(connData, "Accept-Encoding", acceptEncodingBuffer, 64);
