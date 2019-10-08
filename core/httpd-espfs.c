@@ -110,14 +110,14 @@ serveStaticFile(HttpdConnData *connData, const char* filepath) {
 		return HTTPD_CGI_DONE;
 	}
 
-	// invalid call.
-	if (filepath == NULL) {
-		ESP_LOGE(TAG, "serveStaticFile called with NULL path");
-		return HTTPD_CGI_NOTFOUND;
-	}
-
 	//First call to this cgi.
 	if (file==NULL) {
+		// invalid call.
+		if (filepath == NULL) {
+			ESP_LOGE(TAG, "serveStaticFile called with NULL path");
+			return HTTPD_CGI_NOTFOUND;
+		}
+
 		//First call to this cgi. Open the file so we can read it.
 		file = espFsOpen(filepath);
 		if (file == NULL) {
@@ -171,11 +171,60 @@ serveStaticFile(HttpdConnData *connData, const char* filepath) {
 }
 
 
+static size_t getFilepath(HttpdConnData *connData, char *filepath, size_t len)
+{
+	EspFsStat s;
+	int outlen;
+
+	if (connData->cgiArg != &httpdCgiEx) {
+		filepath[0] = '\0';
+		if (connData->cgiArg != NULL) {
+			outlen = strlcpy(filepath, connData->cgiArg, len);
+			if (espFsStat(espfs, filepath, &s) == 0 && s.type == ESPFS_TYPE_FILE) {
+				return outlen;
+			}
+		}
+		return strlcat(filepath, connData->url, len);
+	}
+
+	HttpdCgiExArg *ex = (HttpdCgiExArg *)connData->cgiArg2;
+	const char *route = connData->route;
+	char *url = connData->url;
+	while (*url && *route == *url) {
+		route++;
+		url++;
+	}
+
+	size_t basePathLen = strlen(ex->basePath);
+	if (!ex->basePath || basePathLen == 0) {
+		return strlcpy(filepath, url, len);
+	}
+
+	if (url[0] == '/') {
+		url++;
+	}
+
+	outlen = strlcpy(filepath, ex->basePath, len);
+	if (!espFsStat(espfs, ex->basePath, &s) || s.type == ESPFS_TYPE_DIR) {
+		if (ex->basePath[basePathLen - 1] != '/') {
+			strlcat(filepath, "/", len);
+		}
+		outlen = strlcat(filepath, url, len);
+	}
+	return outlen;
+}
+
+
 //This is a catch-all cgi function. It takes the url passed to it, looks up the corresponding
 //path in the filesystem and if it exists, passes the file through. This simulates what a normal
 //webserver would do with static files.
 CgiStatus ICACHE_FLASH_ATTR cgiEspFsHook(HttpdConnData *connData) {
-	const char *filepath = (connData->cgiArg == NULL) ? connData->url : (char *)connData->cgiArg;
+	if (connData->cgiData) {
+		return serveStaticFile(connData, NULL);
+	}
+
+	char filepath[256];
+	getFilepath(connData, filepath, sizeof(filepath));
 	return serveStaticFile(connData, filepath);
 }
 
@@ -242,14 +291,9 @@ CgiStatus ICACHE_FLASH_ATTR cgiEspFsTemplate(HttpdConnData *connData) {
 
 		tpd->chunk_resume = false;
 
-		const char *filepath = connData->url;
-		// check for custom template URL
-		if (connData->cgiArg2 != NULL) {
-			filepath = connData->cgiArg2;
-			ESP_LOGD(TAG, "Using filepath %s", filepath);
-		}
-
-		tpd->file = espFsOpen(filepath);
+		char filepath[256];
+		getFilepath(connData, filepath, sizeof(filepath));
+		tpd->file = espFsOpen(espfs, filepath);
 
 		if (tpd->file == NULL) {
 			// maybe a folder, look for index file

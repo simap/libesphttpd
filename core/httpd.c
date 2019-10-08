@@ -40,6 +40,9 @@ typedef struct {
 } MimeMap;
 
 
+const char *httpdCgiEx = "HttpdCgiExArg";
+
+
 //#define RSTR(a) ((const char)(a))
 
 //The mappings from file extensions to mime types. If you need an extra mime type,
@@ -593,6 +596,7 @@ static void ICACHE_FLASH_ATTR httpdProcessRequest(HttpdInstance *pInstance, Http
 
             if (match) {
                 ESP_LOGD(TAG, "Is url index %d", i);
+                conn->route=route;
                 conn->cgiData=NULL;
                 conn->cgi=pUrl->cgiCb;
                 conn->cgiArg=pUrl->cgiArg;
