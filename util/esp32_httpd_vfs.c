@@ -69,8 +69,8 @@ static size_t getFilepath(HttpdConnData *connData, char *filepath, size_t len)
 		url++;
 	}
 
-	size_t basePathLen = strlen(ex->basePath);
-	if (!ex->basePath || basePathLen == 0) {
+	size_t basepathLen = strlen(ex->basepath);
+	if (!ex->basepath || basepathLen == 0) {
 		return strlcpy(filepath, url, len);
 	}
 
@@ -78,9 +78,9 @@ static size_t getFilepath(HttpdConnData *connData, char *filepath, size_t len)
 		url++;
 	}
 
-	outlen = strlcpy(filepath, ex->basePath, len);
-	if (stat(ex->basePath, &s) != 0 || S_ISDIR(s.st_mode)) {
-		if (ex->basePath[basePathLen - 1] != '/') {
+	outlen = strlcpy(filepath, ex->basepath, len);
+	if (stat(ex->basepath, &s) != 0 || S_ISDIR(s.st_mode)) {
+		if (ex->basepath[basepathLen - 1] != '/') {
 			strlcat(filepath, "/", len);
 		}
 		outlen = strlcat(filepath, url, len);
@@ -159,11 +159,45 @@ CgiStatus ICACHE_FLASH_ATTR cgiEspVfsGet(HttpdConnData *connData) {
 
 		connData->cgiData=file;
 		httpdStartResponse(connData, 200);
-		httpdHeader(connData, "Content-Type", isIndex?httpdGetMimetype("index.html"):httpdGetMimetype(connData->url));
+
+		const char *mimetype = NULL;
+		bool sendContentType = false;
+		bool sentHeaders = false;
+
+		if (connData->cgiArg == &httpdCgiEx) {
+			HttpdCgiExArg *ex = (HttpdCgiExArg *)connData->cgiArg2;
+			if (ex->mimetype) {
+				mimetype = ex->mimetype;
+				sendContentType = true;
+			} else if (!ex->headerCb) {
+				sendContentType = true;
+			}
+		} else {
+			sendContentType = true;
+		}
+
+		if (sendContentType) {
+			if (!mimetype) {
+				mimetype = isIndex ? httpdGetMimetype("index.html") : httpdGetMimetype(connData->url);
+			}
+			httpdHeader(connData, "Content-Type", mimetype);
+		}
+
 		if (isGzip) {
 			httpdHeader(connData, "Content-Encoding", "gzip");
 		}
-		httpdHeader(connData, "Cache-Control", "max-age=3600, must-revalidate");
+
+		if (connData->cgiArg == &httpdCgiEx) {
+			HttpdCgiExArg *ex = (HttpdCgiExArg *)connData->cgiArg2;
+			if (ex->headerCb) {
+				ex->headerCb(connData);
+				sentHeaders = true;
+			}
+		}
+
+		if (mimetype && !sentHeaders) {
+			httpdAddCacheHeaders(connData, mimetype);
+		}
 		httpdEndHeaders(connData);
 		return HTTPD_CGI_MORE;
 	}
@@ -237,7 +271,35 @@ CgiStatus ICACHE_FLASH_ATTR cgiEspVfsTemplate(HttpdConnData *connData) {
 
 		connData->cgiData=tpd;
 		httpdStartResponse(connData, 200);
-		httpdHeader(connData, "Content-Type", httpdGetMimetype(connData->url));
+
+		const char *mimetype = NULL;
+		bool sendContentType = false;
+
+		if (connData->cgiArg == &httpdCgiEx) {
+			HttpdCgiExArg *ex = (HttpdCgiExArg *)connData->cgiArg2;
+			if (ex->mimetype) {
+				mimetype = ex->mimetype;
+				sendContentType = true;
+			} else if (!ex->headerCb) {
+				sendContentType = true;
+			}
+		} else {
+			sendContentType = true;
+		}
+
+		if (sendContentType) {
+			if (!mimetype) {
+				mimetype = httpdGetMimetype(connData->url);
+			}
+			httpdHeader(connData, "Content-Type", mimetype);
+		}
+
+		if (connData->cgiArg == &httpdCgiEx) {
+			HttpdCgiExArg *ex = (HttpdCgiExArg *)connData->cgiArg2;
+			if (ex->headerCb) {
+				ex->headerCb(connData);
+			}
+		}
 		httpdEndHeaders(connData);
 		return HTTPD_CGI_MORE;
 	}

@@ -149,11 +149,45 @@ serveStaticFile(HttpdConnData *connData, const char* filepath) {
 
 		connData->cgiData=file;
 		httpdStartResponse(connData, 200);
-		httpdHeader(connData, "Content-Type", httpdGetMimetype(filepath));
+
+		const char *mimetype = NULL;
+		bool sendContentType = false;
+		bool sentHeaders = false;
+
+		if (connData->cgiArg == &httpdCgiEx) {
+			HttpdCgiExArg *ex = (HttpdCgiExArg *)connData->cgiArg2;
+			if (ex->mimetype) {
+				mimetype = ex->mimetype;
+				sendContentType = true;
+			} else if (!ex->headerCb) {
+				sendContentType = true;
+			}
+		} else {
+			sendContentType = true;
+		}
+
+		if (sendContentType) {
+			if (!mimetype) {
+				mimetype = httpdGetMimetype(connData->url);
+			}
+			httpdHeader(connData, "Content-Type", mimetype);
+		}
+
 		if (isGzip) {
 			httpdHeader(connData, "Content-Encoding", "gzip");
 		}
-		httpdHeader(connData, "Cache-Control", "max-age=3600, must-revalidate");
+
+		if (connData->cgiArg == &httpdCgiEx) {
+			HttpdCgiExArg *ex = (HttpdCgiExArg *)connData->cgiArg2;
+			if (ex->headerCb) {
+				ex->headerCb(connData);
+				sentHeaders = true;
+			}
+		}
+
+		if (!sentHeaders) {
+			httpdHeader(connData, "Cache-Control", "max-age=3600, must-revalidate");
+		}
 		httpdEndHeaders(connData);
 		return HTTPD_CGI_MORE;
 	}
@@ -195,8 +229,8 @@ static size_t getFilepath(HttpdConnData *connData, char *filepath, size_t len)
 		url++;
 	}
 
-	size_t basePathLen = strlen(ex->basePath);
-	if (!ex->basePath || basePathLen == 0) {
+	size_t basepathLen = strlen(ex->basepath);
+	if (!ex->basepath || basepathLen == 0) {
 		return strlcpy(filepath, url, len);
 	}
 
@@ -204,9 +238,9 @@ static size_t getFilepath(HttpdConnData *connData, char *filepath, size_t len)
 		url++;
 	}
 
-	outlen = strlcpy(filepath, ex->basePath, len);
-	if (!espFsStat(espfs, ex->basePath, &s) || s.type == ESPFS_TYPE_DIR) {
-		if (ex->basePath[basePathLen - 1] != '/') {
+	outlen = strlcpy(filepath, ex->basepath, len);
+	if (!espFsStat(espfs, ex->basepath, &s) || s.type == ESPFS_TYPE_DIR) {
+		if (ex->basepath[basepathLen - 1] != '/') {
 			strlcat(filepath, "/", len);
 		}
 		outlen = strlcat(filepath, url, len);
@@ -314,9 +348,42 @@ CgiStatus ICACHE_FLASH_ATTR cgiEspFsTemplate(HttpdConnData *connData) {
 		}
 		connData->cgiData=tpd;
 		httpdStartResponse(connData, 200);
-		const char *mime = httpdGetMimetype(connData->url);
-		httpdHeader(connData, "Content-Type", mime);
-		httpdAddCacheHeaders(connData, mime);
+
+		const char *mimetype = NULL;
+		bool sendContentType = false;
+		bool sentHeaders = false;
+
+		if (connData->cgiArg == &httpdCgiEx) {
+			HttpdCgiExArg *ex = (HttpdCgiExArg *)connData->cgiArg2;
+			if (ex->mimetype) {
+				mimetype = ex->mimetype;
+				sendContentType = true;
+			} else if (!ex->headerCb) {
+				sendContentType = true;
+			}
+		} else {
+			sendContentType = true;
+		}
+
+		if (sendContentType) {
+			if (!mimetype) {
+				mimetype = httpdGetMimetype(connData->url);
+			}
+			httpdHeader(connData, "Content-Type", mimetype);
+		}
+
+		if (connData->cgiArg == &httpdCgiEx) {
+			HttpdCgiExArg *ex = (HttpdCgiExArg *)connData->cgiArg2;
+			if (ex->headerCb) {
+				ex->headerCb(connData);
+				sentHeaders = true;
+			}
+		}
+
+		if (mimetype && !sentHeaders) {
+			httpdAddCacheHeaders(connData, mimetype);
+			sentHeaders = true;
+		}
 		httpdEndHeaders(connData);
 		return HTTPD_CGI_MORE;
 	}

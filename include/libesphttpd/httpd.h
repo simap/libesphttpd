@@ -151,7 +151,8 @@ const char *httpdCgiEx;  /* Magic for use in CgiArgs to interpret CgiArgs2 as Ht
 
 typedef struct {
 	void (*headerCb)(HttpdConnData *connData);
-	const char *basePath;
+	const char *mimetype;
+	const char *basepath;
 } HttpdCgiExArg;
 
 void httpdRedirect(HttpdConnData *conn, const char *newUrl);

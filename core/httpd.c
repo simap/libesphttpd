@@ -33,14 +33,14 @@ const static char* TAG = "httpd";
 #define HFL_NOCONNECTIONSTR (1<<4)
 
 
+const char *httpdCgiEx = "HttpdCgiExArg";
+
+
 //Struct to keep extension->mime data in
 typedef struct {
     const char *ext;
     const char *mimetype;
 } MimeMap;
-
-
-const char *httpdCgiEx = "HttpdCgiExArg";
 
 
 //#define RSTR(a) ((const char)(a))
